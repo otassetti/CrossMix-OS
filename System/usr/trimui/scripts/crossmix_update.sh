@@ -68,6 +68,13 @@ check_available_space "5000"
 
 check_filesystem
 
+# Verify the complete archive before moving any installed files.
+if ! /tmp/7zz t "$UPDATE_FILE"; then
+  echo "Archive integrity check failed. Installed files have not been moved."
+  rm -f /tmp/stay_awake
+  exit 4
+fi
+
 echo "${BLUE}==============          Creating backup of old files...           ==============${NC}"
 
 echo "Destination directory: $BCK_DIR"
@@ -82,23 +89,25 @@ echo "${BLUE}=============  Decompressing new CrossMix archive, please wait...  
 # Install CrossMix new version
 echo "CrossMix archive decompression lasts at least 4 minutes."
 echo -e "\n\n     !!!!!! Please be patient  !!!!!! \n\n"
-/tmp/7zz x -aoa "$UPDATE_FILE" -o"/mnt/SDCARD"
-sync
-
-if [ $? -eq 0 ]; then
+if /tmp/7zz x -aoa "$UPDATE_FILE" -o"/mnt/SDCARD"; then
+  sync
   echo -e "${GREEN}CrossMix v$update_version extraction successful.${NC}"
   # infoscreen.sh -m "CrossMix v$update_version extraction successful."
   mv "$UPDATE_FILE" "/mnt/SDCARD/_Updates"
 else
   echo -ne "${RED}CrossMix v$update_version extraction encountered errors.${NC}\n"
-  # infoscreen.sh -m "CrossMix v$update_version extraction encountered errors." -t 5
+  echo "Installation stopped. Previous files are retained in $BCK_DIR."
+  echo "Restore the backup before trying to boot this partial installation."
+  sync
+  rm -f /tmp/stay_awake
+  exit 5
 fi
 
 echo "${BLUE}=====================  Restoring saves and savestates...  =====================${NC}"
 
 # Restore saves and savestates from RetroArch (per-CORE directory layout)
-migrate_ra_flat "RetroArch saves"     "$BCK_DIR/RetroArch/.retroarch/saves"  "/mnt/SDCARD/RetroArch/.retroarch/saves"
-migrate_ra_flat "RetroArch savestates" "$BCK_DIR/RetroArch/.retroarch/states" "/mnt/SDCARD/RetroArch/.retroarch/states"
+migrate_ra_flat "RetroArch saves"     "$BCK_DIR/RetroArch/.retroarch/saves"  "/mnt/SDCARD/RetroArch/.retroarch/saves" || exit 6
+migrate_ra_flat "RetroArch savestates" "$BCK_DIR/RetroArch/.retroarch/states" "/mnt/SDCARD/RetroArch/.retroarch/states" || exit 6
 restore_files "Retroarch cheats"  "$BCK_DIR/RetroArch/.retroarch/cheats/" "/mnt/SDCARD/RetroArch/.retroarch/cheats/" "*"
 restore_files "Retroarch database"  "$BCK_DIR/RetroArch/.retroarch/database/" "/mnt/SDCARD/RetroArch/.retroarch/database/" "*"
 restore_files "Retroarch filters"  "$BCK_DIR/RetroArch/.retroarch/filters/" "/mnt/SDCARD/RetroArch/.retroarch/filters/" "*" No_Overwrite
@@ -380,6 +389,45 @@ restore_files() {
 #   copy its CONTENTS into DST (flattened).
 # - Files at the root of SRC are copied directly into DST.
 # - Folders in SRC that don't match any ROM subfolder are copied as-is into DST.
+# Keep the first restored file when two systems share a core and ROM name.
+# Conflicting source files are preserved separately; originals remain in BCK_DIR.
+migrate_ra_copy() {
+  local src="$1" dst="$2" conflicts="$3"
+  local list entry relative target conflict
+  mkdir -p "$dst" || return 1
+  list=$(mktemp) || return 1
+  if [ -d "$src" ]; then
+    find "$src" -type f >"$list"
+  else
+    printf '%s\n' "$src" >"$list"
+  fi
+  while IFS= read -r entry; do
+    if [ -d "$src" ]; then
+      relative=${entry#"$src"/}
+    else
+      relative=$(basename "$entry")
+    fi
+    target="$dst/$relative"
+    if [ -e "$target" ]; then
+      if [ -f "$target" ] && cmp -s "$entry" "$target"; then
+        continue
+      fi
+      conflict="$conflicts/$relative"
+      echo "Save migration conflict: $target; preserving incoming file at $conflict"
+      mkdir -p "$(dirname "$conflict")" && cp -p "$entry" "$conflict" || {
+        rm -f "$list"
+        return 1
+      }
+    else
+      mkdir -p "$(dirname "$target")" && cp -p "$entry" "$target" || {
+        rm -f "$list"
+        return 1
+      }
+    fi
+  done <"$list"
+  rm -f "$list"
+}
+
 migrate_ra_flat() {
   local NAME="$1"       # Friendly name for logs
   local SRC_DIR="$2"    # Source directory (backup) without trailing slash
@@ -407,7 +455,7 @@ migrate_ra_flat() {
   while IFS= read -r romname; do
     [ -n "$romname" ] || continue
     if [ -d "$SRC_DIR/$romname" ]; then
-      /mnt/SDCARD/System/bin/rsync -av "$SRC_DIR/$romname/" "$DST_DIR/"
+      migrate_ra_copy "$SRC_DIR/$romname" "$DST_DIR" "$BCK_DIR/Migration_Conflicts/$NAME/$romname" || return 1
     fi
   done <"$tmp_roms"
 
@@ -416,7 +464,7 @@ migrate_ra_flat() {
   if ls -1A "$SRC_DIR" 2>/dev/null | grep -q .; then
     for f in "$SRC_DIR"/*; do
       [ -f "$f" ] || continue
-      /mnt/SDCARD/System/bin/rsync -av "$f" "$DST_DIR/"
+      migrate_ra_copy "$f" "$DST_DIR" "$BCK_DIR/Migration_Conflicts/$NAME/root-files" || return 1
     done
   fi
 
@@ -425,7 +473,7 @@ migrate_ra_flat() {
     [ -d "$d" ] || continue
     base=$(basename "$d")
     if ! grep -Fxq "$base" "$tmp_roms"; then
-      /mnt/SDCARD/System/bin/rsync -av "$d" "$DST_DIR/"
+      migrate_ra_copy "$d" "$DST_DIR/$base" "$BCK_DIR/Migration_Conflicts/$NAME/root-dirs/$base" || return 1
     fi
   done
 
