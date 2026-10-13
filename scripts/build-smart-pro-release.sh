@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+sevenzip=''
+for candidate in 7zz 7zzs 7z; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    sevenzip=$candidate
+    break
+  fi
+done
+[[ -n "$sevenzip" ]] || { echo 'Install 7-Zip before building.' >&2; exit 1; }
 version=${1:-1.3.4}
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Use a numeric X.Y.Z version.' >&2; exit 1; }
 root=$(git rev-parse --show-toplevel)
@@ -20,7 +28,7 @@ for file in .VolumeIcon.icns autorun.inf LICENSE; do
 done
 find "$stage" -type f -name .gitkeep -delete
 while IFS= read -r -d '' archive; do
-  7zz x "$archive" "-o$(dirname "$archive")" -y
+  "$sevenzip" x "$archive" "-o$(dirname "$archive")" -y
   rm "$archive"
 done < <(find "$stage/RetroArch/.retroarch/cores" -type f -name '*.7z' -print0)
 printf '%s\n' "$version" >"$stage/System/usr/trimui/crossmix-version.txt"
@@ -28,11 +36,11 @@ printf '%s\n' "$version" >"$stage/System/usr/trimui/crossmix-version.txt"
 printf '1.1.1\n20251128\n' >"$stage/trimui/firmwares/MinFwVersion.txt"
 [[ -f "$stage/trimui/firmwares/firmware_tsp_v1.1.1_20251128.7z.001" ]]
 [[ -f "$stage/trimui/firmwares/firmware_tsp_v1.1.1_20251128.7z.002" ]]
-7zz t "$stage/trimui/firmwares/firmware_tsp_v1.1.1_20251128.7z.001"
+"$sevenzip" t "$stage/trimui/firmwares/firmware_tsp_v1.1.1_20251128.7z.001"
 (
   cd "$stage"
   rm -f RetroArch/default_config.7z
-  7zz a RetroArch/default_config.7z RetroArch/retroarch.cfg RetroArch/.retroarch/config
+  "$sevenzip" a RetroArch/default_config.7z RetroArch/retroarch.cfg RetroArch/.retroarch/config
 )
 printf 'Repository: %s\nCommit: %s\nCrossMix package: %s\nDevice: TrimUI Smart Pro TG5040\nFirmware: 1.1.1 / 20251128\nUnofficial test build.\n' \
   "${GITHUB_REPOSITORY:-otassetti/CrossMix-OS}" "$(git -C "$root" rev-parse HEAD)" "$version" >"$stage/build-info.txt"
