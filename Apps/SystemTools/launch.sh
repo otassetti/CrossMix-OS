@@ -53,7 +53,7 @@ fi
 
 /mnt/SDCARD/System/usr/trimui/scripts/infoscreen.sh -m "$LaunchMessage"
 
-cp /mnt/SDCARD/Apps/SystemTools/GoTo_SystemTools_List.json /tmp/state.json
+sh /mnt/SDCARD/System/usr/trimui/scripts/starttab_switcher.sh --system-tools || exit 1
 sync
 
 # We re-create the database only if it doesn't exist...

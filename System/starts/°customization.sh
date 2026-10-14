@@ -153,15 +153,9 @@ if [ "$version" != "$FW_patched_version" ]; then
     fi
 
     # Restore FW settings
-    if -f "/mnt/SDCARD/trimui/firmwares/Last_Automatic_Backup.txt"; then
-        Last_Automatic_Backup=$(cat /mnt/SDCARD/trimui/firmwares/Last_Automatic_Backup.txt)
-        if [ -f "/mnt/SDCARD/System/backups/firmware_settings/$current_device/$Last_Automatic_Backup" ]; then
-            echo "Restoring firmware settings from $Last_Automatic_Backup"
-            "/mnt/SDCARD/Apps/SystemTools/Menu/TOOLS/FW Settings Save-Load.sh" --restore "/mnt/SDCARD/System/backups/firmware_settings/$current_device/$Last_Automatic_Backup" joystick
-            "/mnt/SDCARD/Apps/SystemTools/Menu/TOOLS/FW Settings Save-Load.sh" --restore "/mnt/SDCARD/System/backups/firmware_settings/$current_device/$Last_Automatic_Backup" wifi
-        else
-            echo "No automatic backup found for $Last_Automatic_Backup"
-        fi
+    if ! sh /mnt/SDCARD/System/usr/trimui/scripts/restore_fw_settings.sh; then
+        echo "Firmware settings restoration failed; customization will retry at next boot."
+        exit 1
     fi
 
     # we set the customization flag
@@ -176,7 +170,7 @@ if [ "$version" != "$FW_patched_version" ]; then
 
     # Game tab by default
     if [ "$CrossMix_Update" = "0" ]; then
-        "/mnt/SDCARD/Apps/SystemTools/Menu/USER INTERFACE##START TAB (value)/Tab Game.sh" -s
+        sh /mnt/SDCARD/System/usr/trimui/scripts/starttab_switcher.sh RetroGame
     fi
 
     # Displaying only Emulators with roms

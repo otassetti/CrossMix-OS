@@ -68,6 +68,13 @@ check_available_space "5000"
 
 check_filesystem
 
+# Verify the complete archive before moving the current installation.
+if ! /tmp/7zz t "$UPDATE_FILE"; then
+  echo "CrossMix archive integrity check failed. Current installation was not moved."
+  rm -f /tmp/stay_awake
+  exit 1
+fi
+
 echo "${BLUE}==============          Creating backup of old files...           ==============${NC}"
 
 echo "Destination directory: $BCK_DIR"
@@ -82,16 +89,23 @@ echo "${BLUE}=============  Decompressing new CrossMix archive, please wait...  
 # Install CrossMix new version
 echo "CrossMix archive decompression lasts at least 4 minutes."
 echo -e "\n\n     !!!!!! Please be patient  !!!!!! \n\n"
-/tmp/7zz x -aoa "$UPDATE_FILE" -o"/mnt/SDCARD"
+if /tmp/7zz x -aoa "$UPDATE_FILE" -o"/mnt/SDCARD"; then
+  extraction_status=0
+else
+  extraction_status=$?
+fi
 sync
 
-if [ $? -eq 0 ]; then
+if [ "$extraction_status" -eq 0 ]; then
   echo -e "${GREEN}CrossMix v$update_version extraction successful.${NC}"
   # infoscreen.sh -m "CrossMix v$update_version extraction successful."
   mv "$UPDATE_FILE" "/mnt/SDCARD/_Updates"
 else
   echo -ne "${RED}CrossMix v$update_version extraction encountered errors.${NC}\n"
   # infoscreen.sh -m "CrossMix v$update_version extraction encountered errors." -t 5
+  echo "Stopping migration. Previous files remain in $BCK_DIR; keep the archive and log."
+  rm -f /tmp/stay_awake
+  exit "$extraction_status"
 fi
 
 echo "${BLUE}=====================  Restoring saves and savestates...  =====================${NC}"
@@ -170,11 +184,11 @@ KEYS="Enabled HardcoreMode UserName Token"
 extract_keys "$KEYS" "$SOURCE_FILE" "$TARGET_FILE"
 
 # DC BIOS files new location
-restore_files "Restore DC BIOS files"           "$BCK_DIR/BIOS/dc/" "/mnt/SDCARD/BIOS/dc/flycast/" "*.bin"
+restore_files "Restore DC BIOS files"           "/mnt/SDCARD/BIOS/dc/" "/mnt/SDCARD/BIOS/dc/flycast/" "*.bin" "--exclude=*/"
 
 # Restore PICO-8 binaries & Splore BBS games
 restore_files "Restore PICO-8 binaries"         "$BCK_DIR/Emus/PICO/PICO8_Wrapper/bin/" "/mnt/SDCARD/Emus/PICO/PICO8_Wrapper/bin/" "*"
-restore_files "Restore PICO-8 Splore games"     "/mnt/SDCARD/Emus/PICO/PICO8_Wrapper/.lexaloffle/pico-8/bbs/carts" "/mnt/SDCARD/Roms/PICO/splore" "*"
+restore_files "Restore PICO-8 Splore games"     "$BCK_DIR/Emus/PICO/PICO8_Wrapper/.lexaloffle/pico-8/bbs/carts" "/mnt/SDCARD/Roms/PICO/splore" "*"
 
 # PortMaster themes and runtimes
 move_without_replace "Restore PortMaster themes"       "$BCK_DIR/Apps/PortMaster/PortMaster/themes/" "/mnt/SDCARD/Apps/PortMaster/PortMaster/themes/"
@@ -191,6 +205,9 @@ restore_files "Restore Tailscale configuration" "$BCK_DIR/System/etc/tailscale/"
 
 # Restore Syncthings configuration
 restore_files "Restore Syncthings configuration" "$BCK_DIR/System/etc/syncthing/" "/mnt/SDCARD/System/etc/syncthing" "*"
+
+# Keep firmware settings backups available after the firmware upgrade.
+restore_files "Restore system backups" "$BCK_DIR/System/backups/" "/mnt/SDCARD/System/backups/" "*"
 
 # Ebook Reader
 move_without_replace "Restore Ebooks"            "$BCK_DIR/Apps/EbookReader/.mreader_store/" "/mnt/SDCARD/Apps/EbookReader/.mreader_store/"
@@ -279,7 +296,7 @@ jq -s '.[1] * .[0]' $BCK_DIR/System/etc/scraper.json /mnt/SDCARD/System/etc/scra
 sync
 
 # restore user additional themes, icons, Backgrounds
-move_without_replace "Restore Themes"                   "$BCK_DIR/Backgrounds/" "/mnt/SDCARD/Backgrounds/"
+move_without_replace "Restore Themes"                   "$BCK_DIR/Themes/" "/mnt/SDCARD/Themes/"
 move_without_replace "Restore Backgrounds"              "$BCK_DIR/Backgrounds/" "/mnt/SDCARD/Backgrounds/"
 move_without_replace "Restore Icons"                    "$BCK_DIR/Icons/"       "/mnt/SDCARD/Icons/"
 

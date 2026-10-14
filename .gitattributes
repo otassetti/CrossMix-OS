@@ -1,0 +1,2 @@
+# Device shell scripts must use Linux line endings, including on Windows.
+*.sh text eol=lf

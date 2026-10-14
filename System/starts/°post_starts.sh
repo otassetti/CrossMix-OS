@@ -21,6 +21,9 @@ eval $(
         "' "/mnt/SDCARD/System/etc/crossmix.json"
 )
 
+# Firmware customization can hide tabs; apply the selection after it finishes.
+sh /mnt/SDCARD/System/usr/trimui/scripts/starttab_switcher.sh
+
 # --- Functions ---
 start_thd_listener() {
 	(
