@@ -13,6 +13,21 @@ Prepared on October 13, 2026 for the original Smart Pro, firmware 1.0.4 (`tina.r
 
 This records the owner's device test, not a directly observed automated test. Individual results for settings restoration, System Tools, audio after sleep, emulator saves, and ports have not been recorded separately.
 
+## Follow-up source fixes — October 14, 2026
+
+The next local build defaults to **1.3.12**. It includes four additional high-priority fixes:
+
+- Firmware settings backups are created as temporary archives, checked with 7-Zip, and then published. The printed filename matches the archive created. The automatic backup marker changes only after a verified backup; previous archives are retained. Restoration errors reach the boot helper so customization can retry. Missing optional calibration files are skipped.
+- Save and user-file migration stops on copy or move errors, preserves the backup and release ZIP, and cancels the completion message and automatic reboot. The installer loads its own checked helpers from the ZIP, so an older installed helper cannot bypass the new preflight.
+- Local packages contain `System/etc/local-release.txt` and use manual ZIP updates. OTA bootstrap, release download, and background update checks stop before contacting upstream. The earlier personal versions 1.3.9, 1.3.10, and 1.3.11 are also protected when the new updater scripts are installed.
+- Firmware preparation and CrossMix migration check the mounted card and its FAT32 boot-sector layout before proceeding. Filesystem checker errors stop the update and are never stamped as successful. Legacy date-only check stamps are ignored. Previous automatic FAT repair behavior is retained; a repair status of 1 is accepted only if a second read-only check succeeds. A failed final check requires checking the card on a PC before retrying.
+
+`_assets/scripts/test-update-reliability.py` exercises archive and copy failures, marker preservation, FAT32/FAT16 and unsupported/read-only cards, failed filesystem checks, OTA guards, and loading packaged helpers. It also tests real 7-Zip backup and selective restoration when host 7-Zip is available. These checks and the existing archive safety tests pass on the PC. **No 1.3.12 release ZIP has been built or tested on the console yet.**
+
+To upgrade the working 1.3.11 card, build the 1.3.12 ZIP, retain a full PC backup, check free space against the new manifest, and copy that single unextracted ZIP to the FAT32 card root. The installed 1.3.11 wizard extracts the new installer from the ZIP; it does not need the historical pre-reboot helper replacements described below. If migration stops, keep the ZIP, log, and `_Updates` backup for recovery on the PC. Automatic rollback is not provided.
+
+The medium-priority version comparison, SwanStation widescreen, and GitHub release packaging findings remain separate work.
+
 ## What was checked
 
 - Local commit `206d612fdef83972ed54a17de955125d0c0b3528` matched the latest upstream commit returned by GitHub during the review.
@@ -40,15 +55,15 @@ The existing migration already restores RetroArch, PSP, NDS, N64 and other emula
 
 Run `_assets/scripts/build-local-release.ps1` with `-OutputDirectory` pointing to a PC folder with approximately 20 GB free. Git and 7-Zip are required; an ARM compiler is not needed.
 
-The script exports HEAD, applies local changes to tracked files, normalizes runtime scripts to Linux line endings, preserves UTF-8 filenames, extracts cores, tests the firmware and ZIP, and produces a SHA256 checksum and manifest. Untracked files are excluded except for the three explicitly listed new runtime resources. The final ZIP is checked for scripts containing CRLF or a BOM.
+The script exports HEAD, applies local changes to tracked files, normalizes runtime scripts to Linux line endings, preserves UTF-8 filenames, extracts cores, tests the firmware and ZIP, and produces a SHA256 checksum and manifest. Untracked files are excluded except for the explicitly listed runtime resources and helpers. The final ZIP is checked for scripts containing CRLF or a BOM. The build creates the local-release marker and records the manual OTA policy in the manifest.
 
-The default local version is **1.3.11**, a personal test build rather than an official release. Its numeric version allows the older wizard to detect an upgrade. The internal version is changed only in the build staging directory. The script does not create tags, commits, or GitHub releases.
+The default local version is now **1.3.12**, a personal test build rather than an official release. Its numeric version allows the older wizard to detect an upgrade from 1.3.11. The internal version is changed only in the build staging directory. The script does not create tags, commits, or GitHub releases.
 
-Built and tested archive: **2,491,599,409 bytes** (approximately 2.5 GB). Unpacked contents: **4,936,344,676 bytes** (approximately 4.9 GB). Allow **10 GB free before copying the ZIP**. The accompanying folder `Avant-redemarrage/System/usr/trimui/scripts` contains the two files to copy in installation step 4.
+Previously built and tested **1.3.11** archive: **2,491,599,409 bytes** (approximately 2.5 GB). Unpacked contents: **4,936,344,676 bytes** (approximately 4.9 GB). Allow **10 GB free before copying that ZIP**; use the new manifest for 1.3.12 sizes. The historical accompanying folder `Avant-redemarrage/System/usr/trimui/scripts` contains the two 1.3.11 files used in installation step 4 below.
 
 Isolated tests cover firmware restoration, tab selection, valid/corrupt archives, and extraction errors 2 and 7. Verification directly against the corrected ZIP confirms 656 scripts with LF and no BOM, and checks the syntax of nine critical scripts without normalizing their contents during testing. These checks do not replace testing on the console.
 
-## Simplest installation: keep the existing card
+## Installation used for the validated 1.3.11 build
 
 1. Turn off the console, remove the card, and back up **the entire card to your PC**. The `_Updates` backup on the same card does not replace this copy. If possible, also back up firmware settings (Wi-Fi, calibration and MainUI) before starting. Check the card's filesystem on the PC. Use **FAT32 for this firmware upgrade**: in the owner's test, flashing failed on the original non-FAT32 card and succeeded after copying the contents to the PC, reformatting as FAT32, and restoring the contents.
 2. Allow at least the ZIP size **plus the unpacked size** listed in the manifest, with another 1–2 GB for firmware preparation and restored files. The stable guide mentions 7 GB, but main has grown: use the actual sizes. The updater requires 5000 MB free after copying the ZIP; the wizard also checks for at least 20 MB free in internal storage.
@@ -59,7 +74,7 @@ Isolated tests cover firmware restoration, tab selection, valid/corrupt archives
    Preserve their Linux line endings. Do not overwrite the whole current installation with extracted release files. Do not replace `_FirmwareCheck.sh` with main's version beforehand: the new firmware resources are not installed yet.
 5. Reinsert the card, connect power, and boot. Accept the proposed update and let migration finish. **“Testing archive” is the ZIP integrity check before the current installation is moved.** It can take several minutes. The old system is moved into `_Updates/Backup_CrossMix_v…`, with a log in `_Updates`.
 6. After CrossMix installation, the new wizard detects firmware 1.0.4 and prepares the included Smart Pro firmware **1.1.1**. Follow the displayed instructions to shut down and boot with **VOL− + POWER** to flash it. Do not interrupt flashing. Firmware upgrades can reset internal settings; backups are retained in `System/backups`.
-7. Check sound, controls, Wi-Fi, favorites, a RetroArch save, PSP/NDS saves if used, and PortMaster. Re-enable desired services and verify RetroAchievements credentials. Keep the PC backup and `_Updates` until several games have been validated. Avoid OTA during testing: it still uses the official repository and can replace the local scripts.
+7. Check sound, controls, Wi-Fi, favorites, a RetroArch save, PSP/NDS saves if used, and PortMaster. Re-enable desired services and verify RetroAchievements credentials. Keep the PC backup and `_Updates` until several games have been validated. Avoid OTA on the original 1.3.11 package: it still uses the official repository and can replace the local scripts. The new 1.3.12 source disables OTA for local builds.
 
 ## Limitations
 

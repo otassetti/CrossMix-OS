@@ -1,6 +1,11 @@
 #!/bin/sh
 source /mnt/SDCARD/System/usr/trimui/scripts/update_common.sh
 
+if ! ota_updates_allowed; then
+    manual_update_message
+    exit 0
+fi
+
 cmd=$1
 
 # channel : stable or beta

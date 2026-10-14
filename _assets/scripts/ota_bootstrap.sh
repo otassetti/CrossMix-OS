@@ -2,6 +2,12 @@
 export PATH="/mnt/SDCARD/System/bin:/mnt/SDCARD/System/usr/trimui/scripts:$PATH"
 export LD_LIBRARY_PATH="/mnt/SDCARD/System/lib:/usr/trimui/lib:$LD_LIBRARY_PATH"
 
+. /mnt/SDCARD/System/usr/trimui/scripts/update_policy.sh || exit 1
+if ! ota_updates_allowed; then
+    manual_update_message
+    exit 0
+fi
+
 CommonUpdateScript="/mnt/SDCARD/System/usr/trimui/scripts/update_common.sh"
 currentUpdatePack=$("$CommonUpdateScript" -v)
 

@@ -2,17 +2,28 @@
 export LD_LIBRARY_PATH=./lib:/mnt/SDCARD/System/lib:$LD_LIBRARY_PATH
 export PATH="/mnt/SDCARD/System/bin:/mnt/SDCARD/System/usr/trimui/scripts:$PATH"
 SEVENZ="/mnt/SDCARD/System/bin/7zz"
+interactive=0
+[ $# -eq 0 ] && interactive=1
 
 # Function to restore individual files from the archive
 restore_file() {
     path="$1"
     relative_path="${path#/}" # Remove leading "/" from the path
-    [ -n "$relative_path" ] && $SEVENZ x "$ARCHIVE_PATH" "$relative_path" -y -o/ && echo "Restored: $path"
-    chmod 644 "$path"
-    chown root:root "$path"
+    [ -n "$relative_path" ] || return 1
+    # Uncalibrated devices may have no joystick file in their backup.
+    entries=$("$SEVENZ" l -slt "$ARCHIVE_PATH" "$relative_path") || return $?
+    if ! printf '%s\n' "$entries" | grep -Fxq "Path = $relative_path"; then
+        echo "No backed-up setting for $path; leaving it unchanged."
+        return 0
+    fi
+    "$SEVENZ" x "$ARCHIVE_PATH" "$relative_path" -y -o/ || return $?
+    [ -f "$path" ] || { echo "Restored file is missing: $path" >&2; return 1; }
+    chmod 644 "$path" || return $?
+    chown root:root "$path" || return $?
+    echo "Restored: $path"
 }
 
-if ! read -r current_device </etc/trimui_device.txt; then
+if ! IFS= read -r current_device </etc/trimui_device.txt && [ -z "$current_device" ]; then
     RES=$(fbset | awk '/geometry/ {print $2 "x" $3}')
     if [ "$RES" = "1280x720" ]; then
         current_device="tsp"
@@ -22,6 +33,7 @@ if ! read -r current_device </etc/trimui_device.txt; then
     echo -n $current_device >/etc/trimui_device.txt
 
 fi
+case "$current_device" in tsp|brick) ;; *) echo "Unknown device model." >&2; exit 1 ;; esac
 
 # Function to show help
 show_help() {
@@ -79,26 +91,30 @@ fi
 case "$selected_action" in
 "Backup")
     echo "Backup mode"
-    ARCHIVE_PATH="/mnt/SDCARD/System/backups/firmware_settings/$current_device/backup_$(date +'%Y%m%d-%Hh%M-%S').7z"
-    mkdir -p "/mnt/SDCARD/System/backups/firmware_settings/$current_device/"
-    cd /
+    ARCHIVE_PATH="/mnt/SDCARD/System/backups/firmware_settings/$current_device/backup_$(date +'%Y%m%d-%Hh%M-%S')-$$.7z"
+    partial="$ARCHIVE_PATH.partial"
+    mkdir -p "/mnt/SDCARD/System/backups/firmware_settings/$current_device/" || exit 1
+    [ ! -e "$ARCHIVE_PATH" ] && [ ! -e "$partial" ] || exit 1
+    trap 'rm -f "$partial"' EXIT
+    cd / || exit 1
 
     # Create the backup archive including the specified files
-    $SEVENZ a "$ARCHIVE_PATH" \
-        etc/wifi/wpa_supplicant.conf \
-        mnt/UDISK/system.json \
-        mnt/UDISK/joypad.config \
-        mnt/UDISK/joypad_right.config \
-        root/.ash_history
+    [ -f mnt/UDISK/system.json ] || { echo "MainUI settings are missing; backup canceled." >&2; exit 1; }
+    set --
+    for file in etc/wifi/wpa_supplicant.conf mnt/UDISK/system.json mnt/UDISK/joypad.config mnt/UDISK/joypad_right.config root/.ash_history; do
+        [ ! -f "$file" ] || set -- "$@" "$file"
+    done
+    "$SEVENZ" a -t7z "$partial" "$@" || exit 1
+    "$SEVENZ" t "$partial" || exit 1
+    mv "$partial" "$ARCHIVE_PATH" || exit 1
+    sync || exit 1
 
     # Show info screen only in interactive mode
-    if [ $# -eq 0 ]; then
-        infoscreen.sh -m "\"backup_$(date +'%Y%m%d-%Hh%M-%S').7z\"    saved." -t 2
+    if [ "$interactive" -eq 1 ]; then
+        infoscreen.sh -m "\"$(basename "$ARCHIVE_PATH")\"    saved." -t 2
     else
-        echo "backup_$(date +'%Y%m%d-%Hh%M-%S').7z"
+        basename "$ARCHIVE_PATH"
     fi
-
-    sync
     ;;
 
 "Restore")
@@ -120,6 +136,7 @@ case "$selected_action" in
         echo "Backup archive not found: $ARCHIVE_PATH"
         exit 1
     fi
+    "$SEVENZ" t "$ARCHIVE_PATH" || exit 1
 
     # If not in command line mode, ask what to restore
     if [ -z "$restore_type" ]; then
@@ -139,20 +156,20 @@ case "$selected_action" in
 
     case "$restore_type" in
     "all")
-        $SEVENZ x "$ARCHIVE_PATH" -y -o/ >/dev/null 2>&1 && echo "All settings restored."
+        "$SEVENZ" x "$ARCHIVE_PATH" -y -o/ || exit 1
         restore_message="All settings restored."
         ;;
     "wifi")
-        restore_file "/etc/wifi/wpa_supplicant.conf"
+        restore_file "/etc/wifi/wpa_supplicant.conf" || exit 1
         restore_message="Wifi settings restored."
         ;;
     "joystick")
-        restore_file "/mnt/UDISK/joypad.config"
-        restore_file "/mnt/UDISK/joypad_right.config"
+        restore_file "/mnt/UDISK/joypad.config" || exit 1
+        restore_file "/mnt/UDISK/joypad_right.config" || exit 1
         restore_message="Joystick calibration restored."
         ;;
     "mainui")
-        restore_file "/mnt/UDISK/system.json"
+        restore_file "/mnt/UDISK/system.json" || exit 1
         restore_message="MainUI settings restored."
         ;;
     *)
@@ -165,6 +182,7 @@ case "$selected_action" in
         ;;
     esac
 
+    sync || exit 1
     # Show info screen only in interactive mode
     if [ $# -eq 0 ]; then
         infoscreen.sh -m "$restore_message" -t 2
@@ -172,7 +190,6 @@ case "$selected_action" in
         echo "$restore_message"
     fi
 
-    sync
     ;;
 
 *)

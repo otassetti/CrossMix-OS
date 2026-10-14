@@ -154,6 +154,12 @@ EOF
 
 main() {
 
+    if ! ota_updates_allowed; then
+        rm -f "$RELEASE_META" "$HOTFIX_META"
+        log "Local build: automatic upstream update checks are disabled."
+        exit 0
+    fi
+
     # Quick network check
     if [ -z "$(has_ip)" ]; then
         log "No IP at boot; skipping Update Check."

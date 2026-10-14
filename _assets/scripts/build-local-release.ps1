@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '1.3.11',
+    [string]$Version = '1.3.12',
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
     [string]$SevenZip = 'C:\Program Files\7-Zip\7z.exe'
@@ -50,7 +50,10 @@ try {
     $newRuntimeFiles = @(
         'System/resources/default_state.json',
         'System/usr/trimui/scripts/starttab_switcher.sh',
-        'System/usr/trimui/scripts/restore_fw_settings.sh'
+        'System/usr/trimui/scripts/restore_fw_settings.sh',
+        'System/usr/trimui/scripts/backup_fw_settings.sh',
+        'System/usr/trimui/scripts/sdcard_checks.sh',
+        'System/usr/trimui/scripts/update_policy.sh'
     )
     foreach ($relative in $newRuntimeFiles) {
         $target = Join-Path $stage $relative
@@ -76,6 +79,7 @@ try {
         }
     }
     [IO.File]::WriteAllText((Join-Path $stage 'System/usr/trimui/crossmix-version.txt'), "$Version`n", $utf8)
+    [IO.File]::WriteAllText((Join-Path $stage 'System/etc/local-release.txt'), "$Version`n", $utf8)
     $minimum = [IO.File]::ReadAllLines((Join-Path $stage 'trimui/firmwares/MinFwVersion.txt'))
     $firmware = Join-Path $stage "trimui/firmwares/firmware_tsp_v$($minimum[0])_$($minimum[1]).7z.001"
     if (!(Test-Path -LiteralPath $firmware)) { throw "Required firmware missing: $firmware" }
@@ -125,7 +129,7 @@ try {
             if ($bom -or $content.Contains("`r")) { throw "Non-Linux script in ZIP: $($entry.FullName)" }
             $scriptCount++
         }
-        foreach ($relative in @('System/usr/trimui/scripts/update_common.sh', 'System/usr/trimui/scripts/crossmix_update.sh') + $newRuntimeFiles) {
+        foreach ($relative in @('System/etc/local-release.txt', 'System/usr/trimui/scripts/update_common.sh', 'System/usr/trimui/scripts/crossmix_update.sh') + $newRuntimeFiles) {
             if (!$package.GetEntry($relative)) { throw "Required ZIP entry missing: $relative" }
         }
         Write-Host "Verified Linux line endings for $scriptCount archived scripts."
@@ -133,7 +137,7 @@ try {
     $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText("$archive.sha256", "$hash  $([IO.Path]::GetFileName($archive))`n", $utf8)
     $manifest = [ordered]@{
-        version = $Version; kind = 'local development build'; commit = $sha
+        version = $Version; kind = 'local development build'; commit = $sha; otaPolicy = 'manual'
         localPatches = $patches; newRuntimeFiles = $newRuntimeFiles; firmware = "$($minimum[0]) ($($minimum[1]))"
         archiveBytes = (Get-Item -LiteralPath $archive).Length; sha256 = $hash
         unpackedBytes = (Get-ChildItem -LiteralPath $stage -Recurse -Force -File | Measure-Object Length -Sum).Sum

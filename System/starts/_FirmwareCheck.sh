@@ -64,7 +64,12 @@ diagnose() {
     sleep 0.5
     message="${message}\nChecking filesystem..."
     /mnt/SDCARD/System/usr/trimui/scripts/infoscreen2.sh -m "$message" -fs 12 -fi 0 -p top-left -fb -sp -ff "/mnt/SDCARD/Themes/CrossMix - OS/wqy-microhei.ttf" -i "/mnt/SDCARD/trimui/firmwares/FW_Screen_Wait.jpg" &
-    check_filesystem
+    if ! check_filesystem --force; then
+        message="${message}\nFilesystem check failed. Check and repair the SD card on a PC."
+        pkill presenter
+        /mnt/SDCARD/System/usr/trimui/scripts/infoscreen2.sh -m "$message" -fs 12 -fi 0 -p top-left -fb -ff "/mnt/SDCARD/Themes/CrossMix - OS/wqy-microhei.ttf" -i "/mnt/SDCARD/trimui/firmwares/FW_Screen_Fail.jpg" -k rout A "Exit"
+        return 1
+    fi
     FW_Size=$(/mnt/SDCARD/System/bin/7zz l "$FIRMWARE_PATH" -slt "$FIRMWARE_FILE" | awk ' /^Path = / {found=1; next}  found && /^Size = / { print $3; exit }
 ')
 
@@ -100,6 +105,15 @@ else
         source /mnt/SDCARD/System/usr/trimui/scripts/common_functions.sh
 
         pgrep -f trimui_inputd >/dev/null || { cd "/mnt/SDCARD/trimui/app" && ./trimui_inputd & } # we need input
+
+        # Reject incompatible cards before modifying internal files or preparing an image.
+        /mnt/SDCARD/System/usr/trimui/scripts/infoscreen2.sh -m "Checking SD card before firmware preparation..." -fs 12 -fi 0 -p top-left -fb -sp -ff "/mnt/SDCARD/Themes/CrossMix - OS/wqy-microhei.ttf" -i "/mnt/SDCARD/trimui/firmwares/FW_Screen_Wait.jpg" &
+        if ! check_filesystem; then
+            pkill presenter
+            /mnt/SDCARD/System/usr/trimui/scripts/infoscreen.sh -m "Firmware preparation stopped. Back up the SD card on a PC, check its filesystem, and use FAT32 before retrying." -k "A B" -fs 24
+            exit 1
+        fi
+        pkill presenter
 
         CrossMix_version=$(cat /mnt/SDCARD/System/usr/trimui/crossmix-version.txt)
         Current_FW_Version="$(cat /etc/version)"
@@ -216,17 +230,12 @@ else
         fi
 
         if [ "$crc_verified" = true ]; then
-            # Removing backup from previous FW update runs
-            if [ -f "/mnt/SDCARD/trimui/firmwares/Last_Automatic_Backup.txt" ]; then
-                Last_Automatic_Backup=$(cat /mnt/SDCARD/trimui/firmwares/Last_Automatic_Backup.txt)
-                if [ -f "/mnt/SDCARD/System/backups/firmware_settings/$current_device/$Last_Automatic_Backup" ]; then
-                    echo "Removing last automatic backup: $Last_Automatic_Backup"
-                    rm "/mnt/SDCARD/System/backups/firmware_settings/$current_device/$Last_Automatic_Backup"
-                fi
+            # Keep previous backups and publish the new marker only after verification.
+            if ! Backup_file=$(sh /mnt/SDCARD/System/usr/trimui/scripts/backup_fw_settings.sh); then
+                pkill presenter
+                /mnt/SDCARD/System/usr/trimui/scripts/infoscreen.sh -m "Firmware settings backup failed. Previous backups were kept. Firmware preparation stopped; free space or repair the card and retry." -k "A B" -fs 24
+                exit 1
             fi
-            # backup settings
-            Backup_file=$("/mnt/SDCARD/Apps/SystemTools/Menu/TOOLS/FW Settings Save-Load.sh" --backup | tail -n 1)
-            echo $Backup_file >/mnt/SDCARD/trimui/firmwares/Last_Automatic_Backup.txt
             pkill presenter
             sleep 0.5
             message="${message}\n \nFirmware settings saved:\n$Backup_file"

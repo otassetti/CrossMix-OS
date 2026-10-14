@@ -2,11 +2,17 @@
 
 UPDATE_FILE=$(find /mnt/SDCARD -maxdepth 1 -name "CrossMix-OS_v*.zip" -print -quit)
 
-if [ ! -f /mnt/SDCARD/System/usr/trimui/scripts/update_common.sh ]; then 
-  /mnt/SDCARD/System/bin/7zz e "$UPDATE_FILE" "System/usr/trimui/scripts/update_common.sh" -o/mnt/SDCARD/System/usr/trimui/scripts -y
-fi 
-
-source /mnt/SDCARD/System/usr/trimui/scripts/update_common.sh
+# Use this package's checked helpers even when upgrading an older installation.
+[ -n "$UPDATE_FILE" ] || { echo "No update file found"; exit 1; }
+UPDATER_SCRIPT_DIR=$(mktemp -d /tmp/crossmix-updater.XXXXXX) || exit 1
+export UPDATER_SCRIPT_DIR
+trap 'rm -rf "$UPDATER_SCRIPT_DIR"' EXIT
+/mnt/SDCARD/System/bin/7zz e "$UPDATE_FILE" \
+  "System/usr/trimui/scripts/update_common.sh" \
+  "System/usr/trimui/scripts/sdcard_checks.sh" \
+  "System/usr/trimui/scripts/update_policy.sh" \
+  -o"$UPDATER_SCRIPT_DIR" -y || exit 1
+source "$UPDATER_SCRIPT_DIR/update_common.sh" || exit 1
 
 echo performance >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 echo 1608000 >/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
@@ -66,7 +72,11 @@ check_available_space "5000"
         exit 3
     fi
 
-check_filesystem
+if ! check_filesystem; then
+  echo "Filesystem check failed. Current installation was not moved."
+  rm -f /tmp/stay_awake
+  exit 1
+fi
 
 # Verify the complete archive before moving the current installation.
 if ! /tmp/7zz t "$UPDATE_FILE"; then
@@ -99,7 +109,7 @@ sync
 if [ "$extraction_status" -eq 0 ]; then
   echo -e "${GREEN}CrossMix v$update_version extraction successful.${NC}"
   # infoscreen.sh -m "CrossMix v$update_version extraction successful."
-  mv "$UPDATE_FILE" "/mnt/SDCARD/_Updates"
+  # Keep the archive at the card root until all migration steps finish.
 else
   echo -ne "${RED}CrossMix v$update_version extraction encountered errors.${NC}\n"
   # infoscreen.sh -m "CrossMix v$update_version extraction encountered errors." -t 5
@@ -217,7 +227,9 @@ restore_files "Restore Ebook Reader settings"    "$BCK_DIR/Apps/EbookReader/Book
 restore_files "Restore Music Player current playlist"  "$BCK_DIR/Apps/MusicPlayer/.local/" "/mnt/SDCARD/Apps/MusicPlayer/.local/" "*"
 
 # Additional user libs (without sub directories)
-/mnt/SDCARD/System/bin/rsync  -f"- */" -f"+ *"  -av  "$BCK_DIR/System/lib/" "/mnt/SDCARD/System/lib/" --ignore-existing
+if [ -d "$BCK_DIR/System/lib" ]; then
+  /mnt/SDCARD/System/bin/rsync -f"- */" -f"+ *" -av "$BCK_DIR/System/lib/" "/mnt/SDCARD/System/lib/" --ignore-existing || migration_failed "Additional user libraries" "$?"
+fi
 
 # Additional user bin files (with sub directories)
 restore_files "Restore additional bin files" "$BCK_DIR/System/bin/" "/mnt/SDCARD/System/bin/" "*" "--ignore-existing"
@@ -346,6 +358,7 @@ rm /mnt/SDCARD/Apps/Scraper/Menu/Menu_cache7.db
 # remove old led scripts (CrossMix 1.3.5 now uses SmartLed)
 rm "/mnt/SDCARD/System/etc/led_config.sh"
 
+mv "$UPDATE_FILE" "/mnt/SDCARD/_Updates" || migration_failed "Archive retention" "$?"
 echo "${BLUE}============== Installation completed, rebooting in 10 seconds... ==============${NC}"
 
 
@@ -366,6 +379,15 @@ sleep 30
 }
 
 
+migration_failed() {
+  local status="$2"
+  [ "$status" -gt 0 ] 2>/dev/null || status=1
+  echo "Migration failed: $1 (exit $status). Installation is incomplete; automatic reboot canceled." >&2
+  echo "Keep $BCK_DIR, $UPDATE_FILE, and the update log for recovery on a PC." >&2
+  rm -f /tmp/stay_awake
+  exit "$status"
+}
+
 restore_files() {
   # Copy with overwrite
   local NAME="$1"
@@ -381,10 +403,13 @@ restore_files() {
     FILE_PATTERN="*"
   fi
   echo "------------------------------------------------------------------------------"
-  if [ -n "$(find "$SRC_DIR" -mindepth 1 -name "$FILE_PATTERN" -print -quit 2>/dev/null)" ]; then
+  [ -d "$SRC_DIR" ] || { echo "$NAME: No files to restore."; return 0; }
+  local files
+  files=$(find "$SRC_DIR" -mindepth 1 -name "$FILE_PATTERN" -print -quit) || migration_failed "$NAME: reading source" "$?"
+  if [ -n "$files" ]; then
     echo -e "$NAME: restoring files...\n"
-    mkdir -p "$DST_DIR"
-    /mnt/SDCARD/System/bin/rsync --stats -av $OPTION --include="*/" --include="$FILE_PATTERN" --exclude="*" "$SRC_DIR/" "$DST_DIR/"
+    mkdir -p "$DST_DIR" || migration_failed "$NAME: destination" "$?"
+    /mnt/SDCARD/System/bin/rsync --stats -av $OPTION --include="*/" --include="$FILE_PATTERN" --exclude="*" "$SRC_DIR/" "$DST_DIR/" || migration_failed "$NAME" "$?"
     sync
   else
     echo "$NAME: No files to restore."
@@ -404,27 +429,30 @@ migrate_ra_flat() {
 
   echo "------------------------------------------------------------------------------"
 
-  if [ ! -d "$SRC_DIR" ] || [ -z "$(find "$SRC_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -n1)" ]; then
+  if [ ! -d "$SRC_DIR" ]; then
     echo "$NAME: No files to restore."
     return 0
   fi
+  local files
+  files=$(find "$SRC_DIR" -mindepth 1 -maxdepth 1 -print -quit) || migration_failed "$NAME: reading source" "$?"
+  [ -n "$files" ] || { echo "$NAME: No files to restore."; return 0; }
 
   echo -e "$NAME: migrating files (flatten by ROM folders)...\n"
-  mkdir -p "$DST_DIR"
+  mkdir -p "$DST_DIR" || migration_failed "$NAME: destination" "$?"
 
   # Build the ROM folder name list
   local tmp_roms
-  tmp_roms=$(mktemp)
+  tmp_roms=$(mktemp) || migration_failed "$NAME: temporary file" "$?"
   for romdir in /mnt/SDCARD/Roms/*; do
     [ -d "$romdir" ] || continue
     basename "$romdir"
-  done | sort -u >"$tmp_roms"
+  done | sort -u >"$tmp_roms" || migration_failed "$NAME: ROM folder list" "$?"
 
   # 1) For each ROM folder, if matching folder exists in backup, copy its CONTENTS to DST
   while IFS= read -r romname; do
     [ -n "$romname" ] || continue
     if [ -d "$SRC_DIR/$romname" ]; then
-      /mnt/SDCARD/System/bin/rsync -av "$SRC_DIR/$romname/" "$DST_DIR/"
+      /mnt/SDCARD/System/bin/rsync -av "$SRC_DIR/$romname/" "$DST_DIR/" || migration_failed "$NAME: $romname" "$?"
     fi
   done <"$tmp_roms"
 
@@ -433,7 +461,7 @@ migrate_ra_flat() {
   if ls -1A "$SRC_DIR" 2>/dev/null | grep -q .; then
     for f in "$SRC_DIR"/*; do
       [ -f "$f" ] || continue
-      /mnt/SDCARD/System/bin/rsync -av "$f" "$DST_DIR/"
+      /mnt/SDCARD/System/bin/rsync -av "$f" "$DST_DIR/" || migration_failed "$NAME: $f" "$?"
     done
   fi
 
@@ -442,7 +470,7 @@ migrate_ra_flat() {
     [ -d "$d" ] || continue
     base=$(basename "$d")
     if ! grep -Fxq "$base" "$tmp_roms"; then
-      /mnt/SDCARD/System/bin/rsync -av "$d" "$DST_DIR/"
+      /mnt/SDCARD/System/bin/rsync -av "$d" "$DST_DIR/" || migration_failed "$NAME: $d" "$?"
     fi
   done
 
@@ -459,7 +487,7 @@ move_without_replace() {
     echo "Source directory $SRC_DIR missing."
     return 1
   }
-  mkdir -p "$DST_DIR"
+  mkdir -p "$DST_DIR" || migration_failed "$NAME: destination" "$?"
 
   echo "------------------------------------------------------------------------------"
 
@@ -468,7 +496,9 @@ move_without_replace() {
   for item in "$SRC_DIR"/*; do
     [ -e "$item" ] || continue
     item_name=$(basename "$item")
-    [ -e "$DST_DIR/$item_name" ] || mv "$item" "$DST_DIR/"
+    if [ ! -e "$DST_DIR/$item_name" ]; then
+      mv "$item" "$DST_DIR/" || migration_failed "$NAME: $item_name" "$?"
+    fi
   done
 }
 
@@ -495,7 +525,7 @@ move_items() {
     done
 
     if [ $excluded -eq 0 ]; then
-      mv "$item" "$BCK_DIR/"
+      mv "$item" "$BCK_DIR/" || migration_failed "Backing up $item" "$?"
       sync
     fi
   done

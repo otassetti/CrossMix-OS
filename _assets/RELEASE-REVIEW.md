@@ -4,6 +4,19 @@ Scope: the **17 open PRs** in upstream cizia64/CrossMix-OS, the 100 most recentl
 
 **Update after fixes: both high-priority problems were addressed in local version 1.3.10 and are included in 1.3.11.** The firmware restoration helper was tested with a present or missing backup, an invalid name, and a restoration failure. The tab selector was tested with hidden tabs, absent/present Best collections, an unavailable old preference, return to System Tools, and invalid JSON. The sections below retain the initial review findings. PR 482 was adapted using firmware 1.1.1 language IDs 197/198 while preserving the “Tab 1” through “Tab 7” menus. These changes were uncommitted at review time. SwanStation 16:9, GitHub release publication, and individual ports remain outside the scope of these fixes.
 
+## High-priority follow-up — October 14, 2026
+
+A second code review and isolated reproductions found four additional problems. They are now addressed in the source for the next local build, **1.3.12**:
+
+1. **Firmware backup/restore failures were hidden.** The settings tool now checks archive creation, archive integrity, extraction, permissions, and sync. Backup filenames are generated once. The wizard verifies the new archive before publishing its marker and retains previous backups. Restoration failures reach the boot retry logic.
+2. **Migration could announce completion despite failed save copying.** Copy and move errors now stop migration, retain the release ZIP and backup, and cancel automatic reboot. The installer reads its checked helper scripts from the package rather than trusting the previous installation's helpers.
+3. **OTA could replace the local updater with upstream scripts.** Local builds now include a marker and use manual ZIP updates. All OTA entry points and background checks honor this policy before network access; the earlier personal 1.3.9–1.3.11 versions are also recognized.
+4. **Filesystem failures were ignored and FAT32 compatibility was not checked.** A shared helper checks the mount and FAT32 layout, propagates filesystem checker failures, and writes a daily stamp only after success. Old date-only stamps are not trusted. Firmware preparation stops before internal changes on incompatible or failed cards.
+
+The new regression suite covers simulated archive/copy failures and successful real 7-Zip backup/restoration, plus marker retention, FAT32/FAT16/read-only/unsupported cards, daily checks, OTA protection, and older installed helpers. The existing archive integrity tests also pass. These are PC tests; **1.3.12 has not been built or validated on the console**. The confirmed device baseline remains CrossMix 1.3.11 with firmware 1.1.1.
+
+The boot updater's numeric version comparison still incorrectly ranks 1.4.0 below 1.3.11 after stripping dots. This medium-priority issue, SwanStation widescreen, and GitHub release packaging remain outside the high-priority patch.
+
 ## Priorities for this Smart Pro
 
 ### 1. Automatic restoration of firmware settings

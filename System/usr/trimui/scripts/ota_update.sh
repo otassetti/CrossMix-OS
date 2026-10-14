@@ -6,6 +6,11 @@ run_bootstrap() {
 }
 
 main() {
+	if ! ota_updates_allowed; then
+		manual_update_message
+		read -n 1 -s -r -p "Press A to exit"
+		return 0
+	fi
 	check_connection
 	sleep 2
 	clear
