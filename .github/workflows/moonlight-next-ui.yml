@@ -18,11 +18,20 @@ on:
       - .github/workflows/moonlight-next-ui.yml
 permissions:
   contents: read
+concurrency:
+  group: moonlight-next-ui-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   tg5040:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Apps/MoonlightNextUI
+            _assets/sources/moonlight-next-ui
+            _assets/scripts
       - name: Test launcher and CLI argument handling
         run: python3 _assets/scripts/test-moonlight-next-ui.py
       - name: Build Smart Pro application
