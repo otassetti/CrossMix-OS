@@ -1,0 +1,34 @@
+name: Build Moonlight Next UI
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/moonlight-next-ui]
+    paths:
+      - Apps/MoonlightNextUI/**
+      - _assets/sources/moonlight-next-ui/**
+      - _assets/scripts/build-moonlight-next-ui.sh
+      - _assets/scripts/test-moonlight-next-ui.py
+      - .github/workflows/moonlight-next-ui.yml
+  pull_request:
+    paths:
+      - Apps/MoonlightNextUI/**
+      - _assets/sources/moonlight-next-ui/**
+      - _assets/scripts/build-moonlight-next-ui.sh
+      - _assets/scripts/test-moonlight-next-ui.py
+      - .github/workflows/moonlight-next-ui.yml
+permissions:
+  contents: read
+jobs:
+  tg5040:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test launcher and CLI argument handling
+        run: python3 _assets/scripts/test-moonlight-next-ui.py
+      - name: Build Smart Pro application
+        run: sh _assets/scripts/build-moonlight-next-ui.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MoonlightNextUI-CrossMix
+          path: _assets/sources/moonlight-next-ui/build/MoonlightNextUI-CrossMix.zip
+          if-no-files-found: error

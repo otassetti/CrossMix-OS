@@ -1,0 +1,6 @@
+{
+    "label": "Moonlight Next UI",
+    "icon": "icon.png",
+    "launch": "launch.sh",
+    "description": "Moonlight streaming with the NextUI frontend (experimental)"
+}
