@@ -4,7 +4,7 @@ set -eu
 REPO=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SOURCE="$REPO/_assets/sources/moonlight-next-ui"
 OUTPUT="$SOURCE/build/package"
-IMAGE=${MOONLIGHT_TOOLCHAIN_IMAGE:-ghcr.io/loveretro/tg5040-toolchain:latest}
+IMAGE=${MOONLIGHT_TOOLCHAIN_IMAGE:-ghcr.io/loveretro/tg5040-toolchain@sha256:f131c6af64029a8723d0ce8d3c2682642f5f091b04714f6beedda9bec18477ab}
 docker run --rm --user "$(id -u):$(id -g)" \
     -v "$SOURCE:/workspace" -w /workspace "$IMAGE" make
 mkdir -p "$OUTPUT/Apps/MoonlightNextUI"

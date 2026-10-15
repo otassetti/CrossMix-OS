@@ -14,7 +14,7 @@ CrossMix possède déjà des icônes Moonlight et un ajustement du lanceur du fi
 - UI : tag `v0.1.0`, licence MIT, sources `src/` conservées avec adaptations CrossMix.
 - Apostrophe : commit `c6b57bd8bbfc0da27813d818cc22f7bec38bf600` de [Helaas/Apostrophe](https://github.com/Helaas/Apostrophe/tree/c6b57bd8bbfc0da27813d818cc22f7bec38bf600), deux en-têtes et licence MIT dans `third_party/apostrophe/`.
 - Archive publiée étudiée : `Moonlight.pakz`, SHA256 `8301c56cc00d422f21e2da9835c9d22c13a5b68449c8878ff026e3b81f7fb4ae`. Aucun de ses binaires n'est distribué ici.
-- Compilation : image amont `ghcr.io/loveretro/tg5040-toolchain:latest`, compilateur `aarch64-nextui-linux-gnu-gcc`, Cortex-A53. L'image reste mobile ; définir `MOONLIGHT_TOOLCHAIN_IMAGE` avec un digest validé pour figer une livraison.
+- Compilation : image amont `ghcr.io/loveretro/tg5040-toolchain` figée au digest `sha256:f131c6af64029a8723d0ce8d3c2682642f5f091b04714f6beedda9bec18477ab`, compilateur `aarch64-nextui-linux-gnu-gcc`, Cortex-A53. `MOONLIGHT_TOOLCHAIN_IMAGE` permet de tester une autre image explicitement.
 
 Les dépendances de liaison sont SDL2, SDL2_ttf, SDL2_image, pthread, libm et la libc du SDK. Sur console, elles doivent correspondre aux bibliothèques du firmware (`/usr/trimui/lib`) et de CrossMix (`System/lib`). La compilation avec le SDK NextUI ne garantit pas à elle seule leur compatibilité ABI : vérifier le chargeur ELF, les versions GLIBC, les symboles SDL et les dépendances avec `readelf` puis un lancement réel. Ne pas remplacer globalement la libc ou SDL du système pour contourner un défaut de liaison.
 
@@ -36,7 +36,7 @@ Le marqueur NextUI `/tmp/stay_awake` n'est pas créé : son interprétation par 
 
 ## Vérifications restantes avant livraison utilisable
 
-1. Compiler le port sur Linux/Docker ou par le workflow fourni, puis contrôler les dépendances ELF et GLIBC du binaire TG5040.
+1. Compilation réalisée sur GitHub Actions le 15 octobre 2026, run [38753079087](https://github.com/otassetti/CrossMix-OS/actions/runs/38753079087) : tests du lanceur et du vrai wrapper CLI réussis, ZIP vérifié, ELF64 AArch64 de 141168 octets, références GLIBC_2.17. Dépendances directes relevées : SDL2, SDL2_image, SDL2_ttf, libc, libm et libpthread. La résolution de ces bibliothèques reste à confirmer sur console.
 2. Installer uniquement le ZIP App sur une Smart Pro avec firmware 1.1.1. Vérifier lancement à froid, lisibilité de la police, croix/boutons/clavier et fermeture vers Apps.
 3. Ajouter deux PC, sélectionner le serveur actif, redémarrer l'App et vérifier la persistance sur SD.
 4. Appairer Sunshine avec le PIN, annuler un appairage, tester serveur absent, liste vide et PC non appairé. Vérifier que le Moonlight d'origine reste utilisable.
@@ -44,4 +44,4 @@ Le marqueur NextUI `/tmp/stay_awake` n'est pas créé : son interprétation par 
 6. Vérifier Power court/long, veille/réveil et streaming prolongé. Relever température, charge CPU, coupure Wi-Fi et éventuelle veille automatique indésirable.
 7. Comparer la qualité/latence au Moonlight d'origine avec le même PC et les mêmes réglages. Conserver logs et versions exactes.
 
-Le code amont conserve notamment ses threads d'appairage et de liste. Les cas d'annulation et de timeout doivent être observés sur matériel avant de qualifier la fonction de stable. Le binaire CrossMix n'a pas pu être compilé sur ce poste Windows (Docker absent et WSL non installé) ; le paquet est donc un port source expérimental, pas encore une application validée sur console.
+Le code amont conserve notamment ses threads d'appairage et de liste. Les cas d'annulation et de timeout doivent être observés sur matériel avant de qualifier la fonction de stable. Le binaire CrossMix a été compilé par GitHub Actions ; il est disponible dans l'artefact ZIP du workflow. Le dépôt conserve les sources, et le dossier local `build/` contient le paquet récupéré. L'application reste expérimentale jusqu'aux essais sur console.

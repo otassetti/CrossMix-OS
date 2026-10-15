@@ -27,7 +27,7 @@ No firmware files, original Moonlight settings or existing pairing keys are dele
 
 ## Validation status
 
-Launcher failure paths and source integration are checked on the PC. **Cross-compilation, dynamic linking, rendering, controls, pairing, streaming, sleep/wake and return to MainUI still require validation.** The development PC has neither Docker nor an installed WSL distribution. See the [integration study](../../_assets/sources/moonlight-next-ui/README.md) for dependencies, implementation decisions and the device acceptance checklist.
+Launcher failure paths and native CLI argument handling pass on GitHub Actions. The CrossMix port was successfully cross-compiled there on 2026-10-15: run [38753079087](https://github.com/otassetti/CrossMix-OS/actions/runs/38753079087). The resulting ZIP passed integrity checks; its executable is ELF64 AArch64 and references GLIBC_2.17. **Dynamic linking on the console, rendering, controls, pairing, streaming, sleep/wake and return to MainUI still require validation.** See the [integration study](../../_assets/sources/moonlight-next-ui/README.md) for dependencies, implementation decisions and the device acceptance checklist.
 
 ## Credits
 
