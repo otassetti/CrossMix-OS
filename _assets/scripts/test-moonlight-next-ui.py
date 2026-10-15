@@ -68,6 +68,29 @@ with tempfile.TemporaryDirectory(prefix="moonlight-test-") as temp:
     assert not (firmware / "apps").exists()
     print("PASS: launcher prerequisites, independent working directory, SD data, errors")
 
+    # Exercise the real adapter against fake cpufreq files and a fake client.
+    cpu = root / "cpu"
+    write(cpu / "scaling_governor", "ondemand\n")
+    write(cpu / "scaling_max_freq", "1200000\n")
+    adapter = root / "adapter.sh"
+    adapter_source = (repo / "Apps/MoonlightNextUI/moonlight").read_text()
+    adapter_source = adapter_source.replace("CPU=/sys/devices/system/cpu/cpu0/cpufreq",
+                                           'CPU="' + shell_path(cpu) + '"')
+    write(adapter, adapter_source)
+    client = root / "client.sh"
+    write(client, '#!/bin/sh\nif [ "$1" = stream ]; then\n'
+                  '[ "$(cat "' + shell_path(cpu) + '/scaling_governor")" = performance ] || exit 90\n'
+                  '[ "$(cat "' + shell_path(cpu) + '/scaling_max_freq")" = 1608000 ] || exit 91\n'
+                  'fi\nexit 7\n')
+    for action in ("stream", "pair", "list"):
+        result = subprocess.run([shell, shell_path(adapter), action],
+                                env=dict(os.environ, MOONLIGHT_CLIENT=shell_path(client)),
+                                capture_output=True, text=True)
+        assert result.returncode == 7, (result.stdout, result.stderr)
+        assert (cpu / "scaling_governor").read_text().strip() == "ondemand"
+        assert (cpu / "scaling_max_freq").read_text().strip() == "1200000"
+    print("PASS: stream performance policy, restoration on client failure, pair/list passthrough")
+
     # Compile the actual CLI implementation against a minimal logging declaration.
     # The fake client records arguments, including strings that a shell would expand.
     cc = shutil.which("cc") or shutil.which("gcc")

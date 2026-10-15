@@ -16,6 +16,8 @@ The dedicated **Build Moonlight Next UI** GitHub Actions workflow performs the s
 
 The initial defaults are **1280x720, 60 FPS, 10 Mbps**. Use Servers > X to add your PC's IPv4 address, Pair to display the PIN to enter in Sunshine, then Stream to select an application. Start with 30 FPS or a lower bitrate if Wi-Fi struggles. The upstream UI also exposes Brick resolutions and 120 FPS; those do not establish Smart Pro hardware support. In-stream controls and exit shortcuts are provided by the firmware client (normally Select + Start).
 
+During streaming, the `moonlight` adapter applies CrossMix's stock Moonlight CPU policy (performance, maximum 1608000 kHz). It restores the previous governor and maximum when the client exits, including an error exit. Pairing and listing do not change CPU settings. The firmware still owns Power handling. This policy addresses an integration difference; it does not establish that Wi-Fi or host latency has been resolved. For a latency comparison on Smart Pro, try 1280x720 / 60 FPS / 5 Mbps and, when possible, connect the PC by Ethernet.
+
 ## Data and diagnostics
 
 - UI server list/settings: `Data/MoonlightNextUI/moonlight/config.txt`.
@@ -28,6 +30,8 @@ No firmware files, original Moonlight settings or existing pairing keys are dele
 ## Validation status
 
 Launcher failure paths and native CLI argument handling pass on GitHub Actions. The CrossMix port was successfully cross-compiled there on 2026-10-15: run [38753079087](https://github.com/otassetti/CrossMix-OS/actions/runs/38753079087). The resulting ZIP passed integrity checks; its executable is ELF64 AArch64 and references GLIBC_2.17. **Dynamic linking on the console, rendering, controls, pairing, streaming, sleep/wake and return to MainUI still require validation.** See the [integration study](../../_assets/sources/moonlight-next-ui/README.md) for dependencies, implementation decisions and the device acceptance checklist.
+
+The owner subsequently confirmed that the App works on the console, but reported poor smoothness and significant input latency using 1024x768 / 10 Mbps over Wi-Fi. The performance adapter was added in response; its effect still needs a device comparison. Detailed validation of sleep/wake and other acceptance cases remains outstanding.
 
 ## Credits
 

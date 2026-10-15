@@ -14,6 +14,9 @@ device=$(cat /etc/trimui_device.txt 2>/dev/null)
 [ "$device" = "tsp" ] || fail "Moonlight Next UI currently targets the original Smart Pro only."
 [ -x "$APP_DIR/moonlight-pak" ] || fail "Moonlight Next UI binary missing. Install the compiled CrossMix app package; see README.md."
 command -v moonlight >/dev/null 2>&1 || fail "Moonlight CLI missing from firmware. Check your TrimUI firmware installation."
+export MOONLIGHT_CLIENT
+MOONLIGHT_CLIENT=$(command -v moonlight)
+export PATH="$APP_DIR:$PATH"
 
 export SHARED_USERDATA_PATH="/mnt/SDCARD/Data/MoonlightNextUI"
 export LOGS_PATH="$SHARED_USERDATA_PATH/logs"

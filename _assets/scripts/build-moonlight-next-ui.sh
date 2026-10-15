@@ -10,7 +10,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
 mkdir -p "$OUTPUT/Apps/MoonlightNextUI"
 cp "$REPO/Apps/MoonlightNextUI/"* "$OUTPUT/Apps/MoonlightNextUI/"
 cp "$SOURCE/build/moonlight-pak" "$OUTPUT/Apps/MoonlightNextUI/"
-chmod +x "$OUTPUT/Apps/MoonlightNextUI/launch.sh" "$OUTPUT/Apps/MoonlightNextUI/moonlight-pak"
+chmod +x "$OUTPUT/Apps/MoonlightNextUI/launch.sh" "$OUTPUT/Apps/MoonlightNextUI/moonlight-pak" "$OUTPUT/Apps/MoonlightNextUI/moonlight"
 cd "$OUTPUT"
 zip -r ../MoonlightNextUI-CrossMix.zip Apps
 sha256sum ../MoonlightNextUI-CrossMix.zip

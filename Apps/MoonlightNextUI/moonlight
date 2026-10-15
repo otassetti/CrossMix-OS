@@ -1,0 +1,34 @@
+#!/bin/sh
+# The frontend invokes this adapter; MOONLIGHT_CLIENT is the firmware binary.
+[ -n "${MOONLIGHT_CLIENT:-}" ] && [ -x "$MOONLIGHT_CLIENT" ] || exit 127
+[ "${1:-}" = stream ] || exec "$MOONLIGHT_CLIENT" "$@"
+
+CPU=/sys/devices/system/cpu/cpu0/cpufreq
+governor=$(cat "$CPU/scaling_governor" 2>/dev/null)
+maximum=$(cat "$CPU/scaling_max_freq" 2>/dev/null)
+changed_governor=0
+changed_maximum=0
+restore() {
+    if [ "$changed_governor" = 1 ]; then
+        printf '%s\n' "$governor" >"$CPU/scaling_governor" || echo "Could not restore CPU governor" >&2
+    fi
+    if [ "$changed_maximum" = 1 ]; then
+        printf '%s\n' "$maximum" >"$CPU/scaling_max_freq" || echo "Could not restore CPU limit" >&2
+    fi
+}
+trap restore EXIT
+# Match CrossMix's stock Moonlight optimization, only for the stream lifetime.
+if [ -n "$maximum" ] && [ -w "$CPU/scaling_max_freq" ]; then
+    if printf '%s\n' 1608000 >"$CPU/scaling_max_freq"; then changed_maximum=1; fi
+fi
+if [ -n "$governor" ] && [ -w "$CPU/scaling_governor" ]; then
+    if printf '%s\n' performance >"$CPU/scaling_governor"; then changed_governor=1; fi
+fi
+echo "Moonlight stream CPU: governor=$(cat "$CPU/scaling_governor" 2>/dev/null) max=$(cat "$CPU/scaling_max_freq" 2>/dev/null)" >&2
+"$MOONLIGHT_CLIENT" "$@" &
+client_pid=$!
+trap 'kill -TERM "$client_pid" 2>/dev/null; wait "$client_pid"; exit 143' TERM
+trap 'kill -INT "$client_pid" 2>/dev/null; wait "$client_pid"; exit 130' INT
+trap 'kill -HUP "$client_pid" 2>/dev/null; wait "$client_pid"; exit 129' HUP
+wait "$client_pid"
+exit $?
