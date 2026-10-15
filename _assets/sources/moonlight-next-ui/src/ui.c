@@ -510,6 +510,10 @@ void show_settings(void)
         }
     }
 
+    ap_option latency_opts[] = {
+        { .label = "Off (Auto codec / default VSync)", .value = "0" },
+        { .label = "On (H.264 / VSync off)", .value = "1" },
+    };
     ap_options_item items[] = {
         {
             .label = "Resolution",
@@ -532,6 +536,13 @@ void show_settings(void)
             .option_count = 9,
             .selected_option = br_sel,
         },
+        {
+            .label = "Low latency",
+            .type = AP_OPT_STANDARD,
+            .options = latency_opts,
+            .option_count = 2,
+            .selected_option = cfg.low_latency ? 1 : 0,
+        },
     };
 
     ap_footer_item footer[] = {
@@ -543,7 +554,7 @@ void show_settings(void)
     ap_options_list_opts opts = {
         .title = "Settings",
         .items = items,
-        .item_count = 3,
+        .item_count = 4,
         .footer = footer,
         .footer_count = 3,
         .confirm_button = AP_BTN_A,
@@ -564,6 +575,7 @@ void show_settings(void)
 
     cfg.fps = atoi(fps_opts[items[1].selected_option].value);
     cfg.bitrate = atoi(bitrate_opts[items[2].selected_option].value);
+    cfg.low_latency = items[3].selected_option != 0;
 
     ap_log("ui: saving settings res=%dx%d fps=%d bitrate=%d",
            cfg.width, cfg.height, cfg.fps, cfg.bitrate);

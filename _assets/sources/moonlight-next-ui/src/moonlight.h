@@ -23,6 +23,7 @@ typedef struct {
     int  height;
     int  fps;
     int  bitrate;
+    int  low_latency;
     int  active_server;
     int  server_count;
     ml_server servers[ML_MAX_SERVERS];

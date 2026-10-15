@@ -42,6 +42,7 @@ ml_config load_config(void)
         .height        = 720,
         .fps           = 60,
         .bitrate       = 10000,
+        .low_latency   = 1,
         .active_server = -1,
         .server_count  = 0,
     };
@@ -70,6 +71,8 @@ ml_config load_config(void)
             cfg.fps = atoi(val);
         else if (strcmp(key, "bitrate") == 0)
             cfg.bitrate = atoi(val);
+        else if (strcmp(key, "low_latency") == 0)
+            cfg.low_latency = atoi(val) != 0;
         else if (strcmp(key, "active_server") == 0)
             cfg.active_server = atoi(val);
         else if (strncmp(key, "server.", 7) == 0) {
@@ -112,6 +115,7 @@ int save_config(const ml_config *cfg)
     fprintf(f, "height=%d\n", cfg->height);
     fprintf(f, "fps=%d\n", cfg->fps);
     fprintf(f, "bitrate=%d\n", cfg->bitrate);
+    fprintf(f, "low_latency=%d\n", cfg->low_latency);
     fprintf(f, "active_server=%d\n", cfg->active_server);
 
     for (int i = 0; i < cfg->server_count; i++) {

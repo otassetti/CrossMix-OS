@@ -1,5 +1,6 @@
 #include "apostrophe.h"
 #include "moonlight.h"
+#include "stream_control.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 #include <signal.h>
 #include <poll.h>
 #include <errno.h>
+#include <fcntl.h>
 
 static void parse_pin(const char *line, char *pin_out, int pin_size)
 {
@@ -207,18 +209,22 @@ int ml_stream(const ml_config *cfg, const char *app_name)
     snprintf(bitrate, sizeof(bitrate), "%d", cfg->bitrate);
     char *args[] = {"moonlight", "stream", (char *)host,
                     "-app", (char *)app_name, "-width", width,
-                    "-height", height, "-fps", fps, "-bitrate", bitrate, NULL};
+        "-height", height, "-fps", fps, "-bitrate", bitrate,
+        "-codec", cfg->low_latency ? "h264" : "auto", "-verbose", NULL};
 
     /* No shell: host/application names remain literal arguments. */
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
+        /* Only the video client gets this override; the frontend keeps its own
+           renderer policy. The firmware's SDL renderer otherwise requests vsync. */
+        if (cfg->low_latency) setenv("SDL_RENDER_VSYNC", "0", 1);
         execvp(args[0], args);
         _exit(127);
     }
-    int status;
-    while (waitpid(pid, &status, 0) < 0) {
-        if (errno != EINTR) return -1;
-    }
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    int input_fd = open("/dev/input/event3", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (input_fd < 0) fprintf(stderr, "Stream exit shortcut unavailable: %s\n", strerror(errno));
+    int result = ml_wait_stream(pid, input_fd);
+    if (input_fd >= 0) close(input_fd);
+    return result;
 }

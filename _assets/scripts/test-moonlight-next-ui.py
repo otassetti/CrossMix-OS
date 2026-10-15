@@ -100,30 +100,84 @@ with tempfile.TemporaryDirectory(prefix="moonlight-test-") as temp:
         harness = r'''
 #include "moonlight.h"
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 int main(void) {
+    ml_config defaults = load_config();
+    assert(defaults.low_latency == 1);
+    defaults.low_latency = 0;
+    assert(save_config(&defaults) == 0);
+    assert(load_config().low_latency == 0);
     ml_config cfg = {.active_server = 0, .server_count = 1,
         .width = 1280, .height = 720, .fps = 60, .bitrate = 10000,
         .servers = {{.host = "192.168.1.2"}}};
     assert(ml_stream(&cfg, "Game \"name\" $(touch INJECTED) ; x") == 7);
+    cfg.low_latency = 1;
+    assert(ml_stream(&cfg, "Game \"name\" $(touch INJECTED) ; x") == 7);
+    assert(strcmp(getenv("SDL_RENDER_VSYNC"), "1") == 0);
     cfg.active_server = -1;
     assert(ml_stream(&cfg, "ignored") == -1);
     return 0;
 }
 '''
         write(root / "test.c", harness)
-        write(root / "bin/moonlight", '#!/bin/sh\nprintf "%s\\n" "$@" > "$ARGS_FILE"\nexit 7\n')
+        write(root / "bin/moonlight", '#!/bin/sh\nprintf "%s\\n" "$@" > "$ARGS_FILE"\nprintf "%s\\n" "$SDL_RENDER_VSYNC" > "$VSYNC_FILE"\nexit 7\n')
         executable = root / "cli-test"
         subprocess.run([cc, "-std=gnu11", "-I" + str(root), "-I" + str(source_dir),
-                        str(source_dir / "moonlight_cli.c"), str(root / "test.c"),
+                        str(source_dir / "moonlight_cli.c"), str(source_dir / "stream_control.c"),
+                        str(source_dir / "config.c"), str(root / "test.c"),
                         "-o", str(executable)], check=True)
         args_file = root / "args.txt"
         env = dict(os.environ, PATH=str(root / "bin") + ":" + os.environ["PATH"],
-                   ARGS_FILE=str(args_file))
+                   ARGS_FILE=str(args_file), VSYNC_FILE=str(root / "vsync.txt"),
+                   SDL_RENDER_VSYNC="1", SHARED_USERDATA_PATH=str(root))
         subprocess.run([str(executable)], cwd=root, env=env, check=True)
         args = args_file.read_text().splitlines()
         assert args[:4] == ["stream", "192.168.1.2", "-app", 'Game "name" $(touch INJECTED) ; x'], args
         assert not (root / "INJECTED").exists()
-        print("PASS: actual CLI preserves arguments, exit status and invalid server guard")
+        assert args[-3:] == ["-codec", "h264", "-verbose"], args
+        assert (root / "vsync.txt").read_text().strip() == "0"
+        print("PASS: actual CLI arguments, low-latency config persistence and child-only VSync override")
+
+        guard_test = r'''
+#include "stream_control.h"
+#include <assert.h>
+#include <linux/input.h>
+#include <stdarg.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+static int held;
+int ioctl(int fd, unsigned long request, ...) {
+    (void)fd; (void)request;
+    va_list ap; va_start(ap, request);
+    unsigned char *keys = va_arg(ap, unsigned char *); va_end(ap);
+    memset(keys, 0, (KEY_MAX + 8) / 8);
+    if (held) {
+        keys[BTN_SELECT/8] |= 1u << (BTN_SELECT%8);
+        keys[BTN_START/8] |= 1u << (BTN_START%8);
+    }
+    return 0;
+}
+int main(void) {
+    pid_t child = fork();
+    assert(child >= 0);
+    if (child == 0) { usleep(1200000); _exit(9); }
+    assert(ml_wait_stream(child, 42) == 9);
+    held = 1;
+    child = fork();
+    assert(child >= 0);
+    if (child == 0) { alarm(5); for (;;) pause(); }
+    assert(ml_wait_stream(child, 42) == 0);
+    return 0;
+}
+'''
+        write(root / "guard-test.c", guard_test)
+        subprocess.run([cc, "-std=gnu11", "-I" + str(source_dir),
+                        str(source_dir / "stream_control.c"), str(root / "guard-test.c"),
+                        "-o", str(root / "guard-test")], check=True)
+        subprocess.run([str(root / "guard-test")], check=True, timeout=10)
+        print("PASS: stream monitor preserves failures and stops its child on held exit chord")
     else:
         print("SKIP: native CLI test requires a POSIX host C compiler (runs in CI)")
 
